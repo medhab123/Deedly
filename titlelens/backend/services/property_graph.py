@@ -1,8 +1,9 @@
 """
 Property Behavior Network — graph over properties, owners, violations, and geography.
 
-Builds a graph from enrichment payloads only (no hardcoded data). Uses Node2Vec for
-graph embeddings and Isolation Forest for anomaly-based "network risk" so we can say:
+Builds a graph from enrichment payloads only (no hardcoded data). Uses random-walk
+embeddings (DeepWalk-style, no node2vec/gensim) and Isolation Forest for anomaly-based
+"network risk" so we can say:
 "Does this property behave like other problematic properties?" / "Connected to N
 properties in a high-risk pattern."
 
@@ -17,19 +18,15 @@ from typing import Any
 
 try:
     import networkx as nx
+    import numpy as np
     HAS_NETWORKX = True
 except ImportError:
     HAS_NETWORKX = False
-
-try:
-    from node2vec import Node2Vec
-    HAS_NODE2VEC = True
-except ImportError:
-    HAS_NODE2VEC = False
+    np = None
 
 try:
     from sklearn.ensemble import IsolationForest
-    import numpy as np
+    from sklearn.utils.extmath import randomized_svd
     HAS_SKLEARN = True
 except ImportError:
     HAS_SKLEARN = False
@@ -197,10 +194,8 @@ class PropertyGraph:
             "total_edges": self._g.number_of_edges(),
         }
 
-    def _run_node2vec(self) -> None:
-        """Run Node2Vec and store embeddings for property nodes only."""
-        if not HAS_NODE2VEC:
-            raise RuntimeError("node2vec is required. pip install node2vec")
+    def _run_embeddings(self) -> None:
+        """Random-walk + SVD embeddings (no node2vec/gensim). Uses networkx + numpy + sklearn only."""
         if not HAS_SKLEARN or np is None:
             raise RuntimeError("numpy and sklearn required for embeddings")
         prop_nodes = [n for n in self._g.nodes() if is_property_node(n)]
@@ -208,27 +203,40 @@ class PropertyGraph:
             self._property_embeddings = {n: [0.0] * self._embed_dim for n in prop_nodes}
             return
         try:
-            # Use largest connected component so random walks don't get stuck
             if not nx.is_connected(self._g):
                 comps = list(nx.connected_components(self._g))
                 largest = max(comps, key=len)
                 sub = self._g.subgraph(largest).copy()
             else:
                 sub = self._g
-            n2v = Node2Vec(
-                sub,
-                dimensions=self._embed_dim,
-                walk_length=20,
-                num_walks=50,
-                workers=1,
-                quiet=True,
-            )
-            model = n2v.fit()
-            self._property_embeddings = {}
+            nodes = list(sub.nodes())
+            n_nodes = len(nodes)
+            node_idx = {u: i for i, u in enumerate(nodes)}
+            # Co-occurrence from random walks (DeepWalk-style)
+            n_walks, walk_len = 80, 20
+            window = 3
+            cooc = np.zeros((n_nodes, n_nodes), dtype=np.float64)
+            for _ in range(n_walks):
+                start = np.random.choice(nodes)
+                walk = [start]
+                for _ in range(walk_len - 1):
+                    neigs = list(sub.neighbors(walk[-1]))
+                    if not neigs:
+                        break
+                    walk.append(np.random.choice(neigs))
+                for i, u in enumerate(walk):
+                    for j in range(max(0, i - window), min(len(walk), i + window + 1)):
+                        if i != j:
+                            ui, uj = node_idx.get(u), node_idx.get(walk[j])
+                            if ui is not None and uj is not None:
+                                cooc[ui, uj] += 1
+            cooc = np.log1p(cooc)
+            U, _, _ = randomized_svd(cooc, n_components=min(self._embed_dim, n_nodes - 1), random_state=42)
+            emb = np.zeros((n_nodes, self._embed_dim), dtype=np.float64)
+            emb[:, : U.shape[1]] = U
+            self._property_embeddings = {n: emb[node_idx[n]].tolist() for n in prop_nodes if n in node_idx}
             for n in prop_nodes:
-                if n in model.wv:
-                    self._property_embeddings[n] = model.wv[n].tolist()
-                else:
+                if n not in self._property_embeddings:
                     self._property_embeddings[n] = [0.0] * self._embed_dim
         except Exception:
             self._property_embeddings = {n: [0.0] * self._embed_dim for n in prop_nodes}
@@ -252,7 +260,7 @@ class PropertyGraph:
         """
         prop = _prop_id(payload)
         self.add_payload(payload)
-        self._run_node2vec()
+        self._run_embeddings()
         self._fit_anomaly()
 
         out = {
@@ -272,27 +280,84 @@ class PropertyGraph:
 
         # Connected properties (neighbors via any edge)
         neighbors = list(self._g.neighbors(prop))
-        out["connected_properties"] = len([n for n in neighbors if is_property_node(n)])
-        out["owner_degree"] = len([n for n in neighbors if n.startswith(PREFIX_OWNER)])
+        connected_props = len([n for n in neighbors if is_property_node(n)])
+        owner_deg = len([n for n in neighbors if n.startswith(PREFIX_OWNER)])
+        violation_deg = len([n for n in neighbors if n.startswith(PREFIX_VIOLATION)])
+        out["connected_properties"] = connected_props
+        out["owner_degree"] = owner_deg
 
         tract = _tract_id(payload)
+        same_tract = 0
         if tract and self._g.has_node(tract):
             tract_neighbors = list(self._g.neighbors(tract))
-            out["same_tract_properties"] = len([n for n in tract_neighbors if is_property_node(n)])
+            same_tract = len([n for n in tract_neighbors if is_property_node(n)])
+        out["same_tract_properties"] = same_tract
 
-        if self._iforest is not None and prop in self._property_embeddings:
+        n_props = len([n for n in self._g.nodes() if is_property_node(n)])
+        total_nodes = self._g.number_of_nodes()
+        total_edges = self._g.number_of_edges()
+
+        # Feature inputs (what went into the score)
+        out["feature_inputs"] = {
+            "connected_properties": connected_props,
+            "same_tract_properties": same_tract,
+            "owner_links": owner_deg,
+            "violation_links": violation_deg,
+            "anomaly_raw": None,
+            "total_graph_properties": n_props,
+            "total_graph_nodes": total_nodes,
+            "total_graph_edges": total_edges,
+        }
+
+        if self._iforest is not None and prop in self._property_embeddings and len(self._property_embeddings) >= 2:
             X = np.array([self._property_embeddings[prop]], dtype=np.float64)
             score = float(self._iforest.decision_function(X)[0])
             # decision_function: more negative = more anomalous. Map to 0-100 risk (higher = riskier).
             risk = max(0.0, min(100.0, 50.0 - 100.0 * score))
             out["network_risk_score"] = round(risk, 2)
             out["anomaly_raw"] = round(score, 4)
-            if score < -0.1:
-                out["interpretation"] = "This property's position in the ownership/violation network is anomalous — similar to patterns seen in higher-risk clusters."
+            out["feature_inputs"]["anomaly_raw"] = round(score, 4)
+
+            # Build address-specific score explanation
+            addr = (payload.get("address") or "").strip() or "This property"
+            factors: list[str] = []
+            if connected_props == 0:
+                factors.append("No comparable sales nearby — limited context")
+            elif connected_props < 5:
+                factors.append(f"Only {connected_props} comparable properties in same block")
             else:
-                out["interpretation"] = "This property's network pattern is within the typical range for the current graph."
+                factors.append(f"{connected_props} comparable properties linked (same block)")
+
+            if same_tract > 0:
+                factors.append(f"{same_tract} other property(ies) in same census tract")
+            if owner_deg > 0:
+                factors.append(f"{owner_deg} owner link(s) (deeds, PLUTO, tax records)")
+            if violation_deg > 0:
+                factors.append(f"{violation_deg} violation type(s) on record — raises anomaly")
+
+            if score < -0.1:
+                factors.append("Graph embedding flagged as anomalous vs typical pattern")
+                out["interpretation"] = f"{addr} sits in a network position similar to higher-risk clusters. Isolation Forest anomaly score {round(score, 3)} (negative = unusual)."
+            else:
+                factors.append("Graph embedding within typical range")
+                out["interpretation"] = f"{addr} fits the typical network pattern for this graph. Anomaly score {round(score, 3)} (near zero = normal)."
+
+            out["factors"] = factors
+            out["score_explanation"] = (
+                f"Score {out['network_risk_score']} from Isolation Forest on graph embeddings. "
+                f"Your property connects to {connected_props} comps, {same_tract} tract neighbors, {owner_deg} owner(s), {violation_deg} violation type(s). "
+                f"Raw anomaly {round(score, 3)} → mapped to 0–100 risk."
+            )
         else:
-            out["interpretation"] = "Not enough properties in the graph yet to compute network risk. Ingest more analyses."
+            if n_props < 2:
+                out["network_risk_score"] = 50.0
+                out["interpretation"] = "Single property in graph; network risk requires 2+ properties. Use NYC addresses for automatic expansion, or ingest more analyses."
+                out["factors"] = ["Insufficient graph size — need 2+ properties to compute"]
+                out["score_explanation"] = "Score 50 (neutral) — graph has only 1 property. Add more NYC addresses to build a meaningful network."
+            else:
+                out["interpretation"] = "Graph embeddings or anomaly model not ready; retry after ingesting more analyses."
+                out["factors"] = []
+                out["score_explanation"] = None
 
         return out
 

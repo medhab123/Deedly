@@ -3,8 +3,10 @@ Deedly — Buyer Confidence Platform
 FastAPI backend: title-health risk + neighborhood enrichment + AI copilot
 """
 
+import copy
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -35,6 +37,7 @@ from services.ml_predictor import (
     get_trained_targets,
 )
 from services.property_graph import get_graph
+from services.nyc_property import fetch_sales_comps_near, fetch_sales_comps_from_bbl
 from services.demographics import (
     fetch_demographics_by_zip,
     fetch_demographics_by_county,
@@ -43,6 +46,79 @@ from services.demographics import (
 )
 
 app = FastAPI(title="Deedly API", description="Buyer Confidence Platform — title-health + neighborhood + AI copilot")
+
+
+def _bootstrap_ml_training() -> None:
+    """
+    Bootstrap-train the ML predictor on demo + synthetic NYC-style rows so AI predictions
+    work for NYC properties without requiring POST /api/ai/train.
+    Uses risk_score as target; value_range [0,100] and tier_thresholds [35,60] for LOW/MED/HIGH.
+    """
+    demo_path = Path(__file__).resolve().parent / "demo_responses.json"
+    if not demo_path.exists():
+        return
+    try:
+        with open(demo_path, encoding="utf-8") as f:
+            demos = json.load(f)
+    except Exception:
+        return
+    rows = []
+    # Add real demo rows
+    for key, data in demos.items():
+        if not isinstance(data, dict):
+            continue
+        raw = copy.deepcopy(data)
+        dash = raw.get("confidence_dashboard") or {}
+        risk = raw.get("risk_score") or {}
+        score = risk.get("score") if isinstance(risk, dict) else (risk if isinstance(risk, (int, float)) else None)
+        if score is None and dash:
+            risk_calc = compute_risk_score(dash)
+            score = risk_calc.get("score")
+        if score is not None:
+            raw["confidence_dashboard"] = dash
+            raw["risk_score"] = {"score": score, "level": risk.get("level", "MODERATE")}
+            rows.append({"payload": raw, "risk_score": score})
+    # Synthetic NYC-style rows: vary crime, flood, legal, valuation for diversity
+    base_nyc = demos.get("demo1") or (demos.get(list(demos.keys())[0]) if demos else {})
+    if base_nyc and isinstance(base_nyc, dict):
+        for inc, flood, misclass, co_ok, comps, trans in [
+            (20, 15, False, True, 12, 1),
+            (80, 30, False, True, 5, 2),
+            (150, 50, True, False, 0, 0),
+            (300, 70, True, False, 0, 6),
+            (450, 85, True, False, 0, 10),
+            (60, 25, False, True, 15, 0),
+            (200, 45, True, False, 3, 4),
+            (100, 35, True, True, 8, 3),
+        ]:
+            raw = copy.deepcopy(base_nyc)
+            raw.setdefault("crime", {})["incident_count"] = inc
+            raw.setdefault("climate", {})["flood_score"] = flood
+            raw["transfer_count"] = trans
+            raw["transfers"] = [{"recording_date": "2020-01-01"}] * min(trans, 15) if trans else []
+            nyc = raw.setdefault("nyc_property", {})
+            nyc["co_status"] = "retrieved" if co_ok else "not_retrieved"
+            nyc["misclassification"] = {"misclassification_suspected": misclass}
+            nyc["valuation"] = {"comps_used": comps, "estimated_value": 800000 if comps else None}
+            dash = compute_confidence_dashboard(raw)
+            raw["confidence_dashboard"] = dash
+            risk_result = compute_risk_score(dash)
+            score = risk_result.get("score", 50)
+            raw["risk_score"] = risk_result
+            rows.append({"payload": raw, "risk_score": score})
+    if len(rows) < 2:
+        return
+    try:
+        ml_train_from_rows(
+            target_key="risk_score",
+            rows=rows,
+            value_range=[0.0, 100.0],
+            tier_thresholds=[35.0, 60.0],
+        )
+    except Exception:
+        pass
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -50,6 +126,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def _on_startup() -> None:
+    """Bootstrap ML model at startup so AI predictions work for NYC without manual training."""
+    _bootstrap_ml_training()
 
 
 class AnalyzeRequest(BaseModel):
@@ -170,7 +252,7 @@ def _to_deedly_response(augmented: dict, persona: str) -> dict:
         flags.append({"label": "High turnover", "level": "med"})
     if dash.get("valuation_confidence", {}).get("comps_used", 0) == 0:
         flags.append({"label": "No comps", "level": "med"})
-    if augmented.get("nyc_property", {}).get("misclassification", {}).get("misclassification_suspected"):
+    if ((augmented.get("nyc_property") or {}).get("misclassification") or {}).get("misclassification_suspected"):
         flags.append({"label": "Easement found", "level": "med"})
     title_detail = dash.get("hidden_legal_risks") or {}
     nyc = augmented.get("nyc_property") or {}
@@ -413,6 +495,111 @@ async def ai_predict(req: AIPredictRequest):
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ML prediction failed: {str(e)}")
+
+
+def _graph_payload(req: GraphRequest) -> dict:
+    """Resolve enrichment payload from analysisId or payload. No hardcoded data."""
+    if req.analysisId and req.analysisId in _analysis_store:
+        return _analysis_store[req.analysisId]
+    if req.payload:
+        return req.payload
+    raise HTTPException(
+        status_code=400,
+        detail="Provide analysisId (from a prior analyze) or payload (enrichment JSON).",
+    )
+
+
+async def _expand_payload_for_graph(payload: dict) -> dict:
+    """
+    Add sales_comps to payload when NYC and few/no comps. Expands radius (24mo, limit 40)
+    so the graph has enough property nodes for network risk.
+    Uses BBL from nyc_property when available (bypasses address parsing); else address/lat.
+    """
+    nyc = payload.get("nyc_property") or {}
+    comps = nyc.get("sales_comps") or []
+    pluto = nyc.get("pluto") or {}
+    bbl = nyc.get("bbl") or pluto.get("bbl")
+    zipcode = pluto.get("zipcode") or _zip_from_address(payload.get("address") or "")
+    new_comps = []
+    # Path 1: BBL available — fetch comps directly (no address/lat lookup)
+    if bbl and len(comps) < 15:
+        try:
+            new_comps = await fetch_sales_comps_from_bbl(bbl, zipcode=zipcode or None, months=24, limit=40)
+        except Exception:
+            pass
+    # Path 2: address / lat-lng fallback when BBL path fails or BBL missing
+    if not new_comps and len(comps) < 15:
+        addr = payload.get("address")
+        geo = payload.get("geocoded") or {}
+        lat, lng = geo.get("lat"), geo.get("lng")
+        try:
+            new_comps = await fetch_sales_comps_near(address=addr, lat=lat, lng=lng, months=24, limit=40)
+        except Exception:
+            pass
+    if new_comps:
+        p = dict(payload)
+        nyc2 = dict(nyc)
+        merged = list(comps)
+        seen = {(c.get("borough"), c.get("block"), c.get("lot")) for c in comps}
+        for c in new_comps:
+            k = (c.get("borough"), c.get("block"), c.get("lot"))
+            if k not in seen:
+                seen.add(k)
+                merged.append(c)
+        nyc2["sales_comps"] = merged[:60]
+        p["nyc_property"] = nyc2
+        return p
+    return payload
+
+
+def _zip_from_address(address: str) -> str:
+    """Extract 5-digit zip from 'City, ST 12345' or similar."""
+    m = re.search(r"\b(\d{5})(?:-\d{4})?\b", address or "")
+    return m.group(1) if m else ""
+
+
+@app.get("/api/graph/status")
+async def graph_status():
+    """Return Property Behavior Network stats: nodes, edges, property count. All data from ingests."""
+    try:
+        g = get_graph()
+        return g.status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/graph/ingest")
+async def graph_ingest(req: GraphRequest):
+    """
+    Add one enrichment payload to the Property Behavior Network.
+    Builds nodes (property, tract, owners, violations) and edges from the payload only.
+    For NYC, expands with sales_comps (24mo, limit 40) so there are enough property nodes.
+    """
+    payload = _graph_payload(req)
+    payload = await _expand_payload_for_graph(payload)
+    try:
+        g = get_graph()
+        result = g.add_payload(payload)
+        return {"ok": True, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/graph/predict")
+async def graph_predict(req: GraphRequest):
+    """
+    Run graph-based network risk: add payload to graph, run embeddings + Isolation Forest.
+    For NYC, expands with sales_comps (24mo, limit 40) so there are enough property nodes.
+    Returns network_risk_score (anomaly-based), interpretation, and connected-property counts.
+    """
+    payload = _graph_payload(req)
+    payload = await _expand_payload_for_graph(payload)
+    try:
+        g = get_graph()
+        result = g.predict_network_risk(payload)
+        return {"ok": True, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/demo")

@@ -239,92 +239,109 @@ function renderDashboard(data) {
   $("watchouts-list").innerHTML = watchouts.map((w) => `<li>${w}</li>`).join("") || "<li>—</li>";
 
   initMap();
-  fetchAIPredictions();
+  fetchGraphRisk();
 }
 
-// AI prediction layer: GET /api/ai/targets then POST /api/ai/predict with chosen target (no hardcoding)
-function fetchAIPredictions() {
-  const loadingEl = $("ai-predictions-loading");
-  const contentEl = $("ai-predictions-content");
+// Property Behavior Network: ingest then predict (no hardcoding)
+function fetchGraphRisk() {
+  const loadingEl = $("graph-risk-loading");
+  const contentEl = $("graph-risk-content");
   if (!loadingEl || !contentEl) return;
   if (!currentAnalysisId) {
     contentEl.classList.add("hidden");
     return;
   }
-
   loadingEl.classList.remove("hidden");
   contentEl.classList.add("hidden");
+  const body = JSON.stringify({ analysisId: currentAnalysisId });
 
-  fetch(`${BACKEND_URL}/api/ai/targets`)
-    .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.statusText))))
-    .then((data) => {
-      const targets = data.targets || [];
-      if (targets.length === 0) {
-        loadingEl.classList.add("hidden");
-        contentEl.classList.remove("hidden");
-        $("ai-ensemble-score").textContent = "—";
-        const tierEl = $("ai-risk-tier");
-        tierEl.textContent = "N/A";
-        tierEl.className = "ai-tier-badge";
-        $("ai-model-lr").textContent = "—";
-        $("ai-model-rf").textContent = "—";
-        $("ai-model-gb").textContent = "—";
-        $("ai-top-drivers").innerHTML = "<li>No model trained. Call POST /api/ai/train with target and rows, then retry.</li>";
-        if ($("ai-idea")) $("ai-idea").textContent = "";
-        return;
-      }
-      const target = targets[0];
-      return fetch(`${BACKEND_URL}/api/ai/predict`, {
+  fetch(`${BACKEND_URL}/api/graph/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  })
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
+    .then(() =>
+      fetch(`${BACKEND_URL}/api/graph/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target, analysisId: currentAnalysisId }),
-      }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText || r.status))));
-    })
+        body,
+      })
+    )
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
     .then((data) => {
-      if (!data) return;
       loadingEl.classList.add("hidden");
       contentEl.classList.remove("hidden");
-      const val = data.predicted_value ?? data.ensemble_risk_score;
-      $("ai-ensemble-score").textContent = val != null ? val : "—";
-      const tier = (data.tier || data.risk_tier || "—").toUpperCase();
-      const tierEl = $("ai-risk-tier");
-      tierEl.textContent = tier;
-      tierEl.className = "ai-tier-badge " + (tier === "LOW" ? "low" : tier === "HIGH" ? "high" : "med");
-      const models = data.models || {};
-      $("ai-model-lr").textContent = models.linear_regression ?? "—";
-      $("ai-model-rf").textContent = models.random_forest ?? "—";
-      $("ai-model-gb").textContent = models.gradient_boosting ?? "—";
-      const drivers = data.top_drivers || [];
-      $("ai-top-drivers").innerHTML = drivers.length ? drivers.map((d) => `<li>${formatFeatureName(d)}</li>`).join("") : "<li>—</li>";
-      if ($("ai-idea")) $("ai-idea").textContent = data.target ? `Target: ${data.target}` : "";
+      const score = data.network_risk_score;
+      $("graph-risk-score").textContent = score != null ? score : "—";
+      $("graph-risk-interpretation").textContent = data.interpretation || "";
+      const stats = [];
+      if (data.connected_properties != null) stats.push(`Connected properties: ${data.connected_properties}`);
+      if (data.same_tract_properties != null) stats.push(`Same tract: ${data.same_tract_properties}`);
+      if (data.owner_degree != null) stats.push(`Owner links: ${data.owner_degree}`);
+      if (data.feature_inputs?.violation_links != null && data.feature_inputs.violation_links > 0) {
+        stats.push(`Violation types: ${data.feature_inputs.violation_links}`);
+      }
+      $("graph-risk-stats").innerHTML = stats.length ? stats.map((s) => `<li>${s}</li>`).join("") : "";
+
+      // Feature inputs (address-specific explainability)
+      const fi = data.feature_inputs || {};
+      const fiOrder = [
+        "connected_properties",
+        "same_tract_properties",
+        "owner_links",
+        "violation_links",
+        "anomaly_raw",
+        "total_graph_properties",
+        "total_graph_nodes",
+        "total_graph_edges",
+      ];
+      const fiLabels = {
+        connected_properties: "Comparable properties (same block)",
+        same_tract_properties: "Other properties in census tract",
+        owner_links: "Owner links (deeds, PLUTO, tax)",
+        violation_links: "Violation types on record",
+        anomaly_raw: "Raw anomaly score (Isolation Forest)",
+        total_graph_properties: "Properties in graph",
+        total_graph_nodes: "Total graph nodes",
+        total_graph_edges: "Total graph edges",
+      };
+      let fiHtml = "";
+      for (const k of fiOrder) {
+        if (!(k in fi)) continue;
+        const v = fi[k];
+        if (v == null && k !== "anomaly_raw") continue;
+        const label = fiLabels[k] || k.replace(/_/g, " ");
+        const val = v != null ? String(v) : "—";
+        fiHtml += `<div class="graph-fi-row"><span class="graph-fi-label">${label}</span><span class="graph-fi-value">${val}</span></div>`;
+      }
+      const fiEl = $("graph-risk-feature-inputs");
+      if (fiEl) fiEl.innerHTML = fiHtml || "<p class=\"graph-fi-empty\">No feature inputs available.</p>";
+
+      const explEl = $("graph-risk-score-explanation");
+      if (explEl) explEl.textContent = data.score_explanation || "";
+      explEl?.classList?.toggle("hidden", !data.score_explanation);
+
+      const factorsEl = $("graph-risk-factors");
+      const factors = data.factors || [];
+      if (factorsEl) factorsEl.innerHTML = factors.length ? factors.map((f) => `<li>${f}</li>`).join("") : "";
     })
     .catch(() => {
       loadingEl.classList.add("hidden");
       contentEl.classList.remove("hidden");
-      $("ai-ensemble-score").textContent = "—";
-      const tierEl = $("ai-risk-tier");
-      tierEl.textContent = "Error";
-      tierEl.className = "ai-tier-badge";
-      $("ai-model-lr").textContent = "—";
-      $("ai-model-rf").textContent = "—";
-      $("ai-model-gb").textContent = "—";
-      $("ai-top-drivers").innerHTML = "<li>Prediction unavailable (call POST /api/ai/train first or check backend).</li>";
-      if ($("ai-idea")) $("ai-idea").textContent = "";
+      $("graph-risk-score").textContent = "—";
+      $("graph-risk-interpretation").textContent = "Network risk unavailable (ingest more analyses or check backend).";
+      $("graph-risk-stats").innerHTML = "";
+      const fiEl = $("graph-risk-feature-inputs");
+      if (fiEl) fiEl.innerHTML = "";
+      const explEl = $("graph-risk-score-explanation");
+      if (explEl) { explEl.textContent = ""; explEl.classList.add("hidden"); }
+      const factorsEl = $("graph-risk-factors");
+      if (factorsEl) factorsEl.innerHTML = "";
     });
 }
 
-function formatFeatureName(name) {
-  if (!name) return name;
-  return name
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .replace("Log Median Income", "Income (log)")
-    .replace("Estimated Value Log", "Value (log)")
-    .replace("Legal Risk Encoded", "Legal risk level")
-    .replace("Valuation Encoded", "Valuation confidence");
-}
-
-$("ai-predict-btn")?.addEventListener("click", () => fetchAIPredictions());
+$("graph-risk-btn")?.addEventListener("click", () => fetchGraphRisk());
 
 // Map
 function initMap() {

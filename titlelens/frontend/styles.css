@@ -555,6 +555,114 @@ body::before {
   font-style: italic;
 }
 
+/* ─── Graph / network risk ─── */
+.graph-risk-card {
+  background: linear-gradient(135deg, rgba(45, 122, 143, 0.08) 0%, rgba(195, 74, 54, 0.06) 100%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+.graph-risk-card h3 {
+  font-family: "Syne", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 0.35rem;
+  color: var(--text);
+}
+
+.graph-risk-desc {
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.graph-risk-loading { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+
+.graph-risk-score-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+
+.graph-risk-label { font-size: 0.85rem; color: var(--text-soft); }
+
+.graph-risk-value {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.graph-risk-interpretation {
+  font-size: 0.9rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+  margin: 0 0 0.5rem;
+}
+
+.graph-risk-stats {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.graph-risk-details {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.graph-risk-details summary {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.graph-risk-feature-inputs {
+  margin: 0.75rem 0;
+  font-size: 0.88rem;
+}
+
+.graph-fi-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.25rem 0;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.graph-fi-row:last-child { border-bottom: none; }
+
+.graph-fi-label {
+  color: var(--text-soft);
+}
+
+.graph-fi-value {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.graph-risk-score-explanation {
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+  margin: 0.75rem 0;
+  font-style: italic;
+}
+
+.graph-risk-score-explanation.hidden { display: none; }
+
+.graph-risk-factors {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 /* ─── Tabs ─── */
 .tabs-row {
   display: flex;

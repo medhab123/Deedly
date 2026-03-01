@@ -185,12 +185,12 @@ async def generate_risk_summary(enrichment: dict) -> str:
         f"Write an AI property risk summary (3-5 sentences) citing specific values from the data."
     )
 
-    out, gemini_err = await _call_gemini(prompt, system, max_tokens=600)
+    out, gemini_err = await _call_gemini(prompt, system, max_tokens=2048)
     if out:
         return out
     out = await _call_openai(
         [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-        max_tokens=600,
+        max_tokens=2048,
     )
     if out:
         return out

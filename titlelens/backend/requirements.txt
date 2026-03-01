@@ -13,6 +13,5 @@ numpy>=1.24.0
 # Optional: add XGBoost to the ensemble
 # xgboost>=2.0.0
 
-# Property Behavior Network (graph + Node2Vec + anomaly)
+# Property Behavior Network (graph + random-walk embeddings + anomaly)
 networkx>=3.0
-node2vec>=0.5.0

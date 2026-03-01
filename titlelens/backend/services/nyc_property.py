@@ -72,6 +72,7 @@ def _normalize_street(s: str) -> str:
         ("ST", "STREET"), ("ST.", "STREET"),
         ("BLVD", "BOULEVARD"), ("RD", "ROAD"), ("DR", "DRIVE"),
         ("PL", "PLACE"), ("LN", "LANE"),
+        ("PKWY", "PARKWAY"), ("PKY", "PARKWAY"),
     ]:
         s = re.sub(rf"\b{re.escape(abbr)}\b", full, s)
     return s
@@ -407,7 +408,7 @@ async def _fetch_sales_comps(
         # Attempt 1: borough + block
         where1 = f"{base_where} AND borough = '{borough_code}' AND block = '{block}'"
         params = {
-            "$select": "borough,neighborhood,building_class_category,building_class_at_time_of_sale,address,zip_code,block,lot,gross_square_feet,land_square_feet,year_built,total_units,residential_units,commercial_units,sale_price,sale_date",
+            "$select": "borough,neighborhood,building_class_category,address,zip_code,block,lot,gross_square_feet,land_square_feet,year_built,total_units,residential_units,commercial_units,sale_price,sale_date",
             "$where": where1,
             "$order": "sale_date DESC",
             "$limit": limit,
@@ -445,7 +446,7 @@ async def _fetch_sales_comps(
                 "gross_sqft": sqft,
                 "price_per_sqft": ppsf,
                 "building_class_category": c.get("building_class_category"),
-                "building_class_at_sale": c.get("building_class_at_time_of_sale"),
+                "building_class_at_sale": c.get("building_class_at_time_of") or c.get("building_class_at_time_of_sale"),
                 "year_built": _parse_int(c.get("year_built")),
                 "total_units": _parse_int(c.get("total_units")),
                 "residential_units": _parse_int(c.get("residential_units")),
@@ -454,6 +455,46 @@ async def _fetch_sales_comps(
         return out
     except Exception:
         return []
+
+
+async def fetch_sales_comps_near(
+    address: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    months: int = 24,
+    limit: int = 40,
+) -> list[dict]:
+    """
+    Fetch NYC sales comps for address or lat/lng. Expands radius (longer months, higher limit)
+    so the graph has enough property nodes for network risk.
+    """
+    result = None
+    if address:
+        result = await _bbl_and_pluto_from_address(address.strip())
+    if not result and lat is not None and lng is not None:
+        result = await _pluto_from_lat_lng(float(lat), float(lng))
+    if not result:
+        return []
+    borough_code, block, lot, pluto_row = result
+    zipcode = pluto_row.get("zipcode")
+    return await _fetch_sales_comps(borough_code, str(block), zipcode, months=months, limit=limit)
+
+
+async def fetch_sales_comps_from_bbl(
+    bbl: str,
+    zipcode: str | None = None,
+    months: int = 24,
+    limit: int = 40,
+) -> list[dict]:
+    """
+    Fetch NYC sales comps using BBL directly. Borough(1) + block(5) + lot(4).
+    Used when payload already has nyc_property.bbl — bypasses address/lat lookup.
+    """
+    if not bbl or len(bbl) < 10:
+        return []
+    borough_code = bbl[0]
+    block = bbl[1:6].lstrip("0") or bbl[1:6]
+    return await _fetch_sales_comps(borough_code, block, zipcode, months=months, limit=limit)
 
 
 def _estimate_valuation(pluto_row: dict, comps: list[dict]) -> dict:
@@ -646,6 +687,9 @@ async def fetch_nyc_property_report(
     pluto = {
         "address": pluto_row.get("address"),
         "bbl": str(bbl).split(".")[0] if bbl else None,
+        "borough_code": borough_code,
+        "block": str(block),
+        "zipcode": pluto_row.get("zipcode"),
         "bldgclass": pluto_row.get("bldgclass"),
         "zonedist1": pluto_row.get("zonedist1"),
         "landuse": pluto_row.get("landuse"),

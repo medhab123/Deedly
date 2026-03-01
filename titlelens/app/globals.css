@@ -1,26 +1,166 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
+@custom-variant dark (&:is(.dark *));
+
+/* Deedly: Pale + Gold + Rough + Off-Navy — tuned for readability */
+/* #E8D9C4 Pale, #785D32 Gold, #3E160C Rough, #050A30 Off-Navy */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #050A30;
+  --foreground: #EDE4D4;
+  --card: #0c1448;
+  --card-foreground: #EDE4D4;
+  --popover: #0c1448;
+  --popover-foreground: #EDE4D4;
+  --primary: #8B7355;
+  --primary-foreground: #EDE4D4;
+  --secondary: #121b4d;
+  --secondary-foreground: #EDE4D4;
+  --muted: #121b4d;
+  --muted-foreground: #a89f8e;
+  --accent: #785D32;
+  --accent-foreground: #E8D9C4;
+  --destructive: #3E160C;
+  --destructive-foreground: #E8D9C4;
+  --border: #1e2568;
+  --input: #121b4d;
+  --ring: #785D32;
+  --chart-1: #785D32;
+  --chart-2: #E8D9C4;
+  --chart-3: #3E160C;
+  --chart-4: #9a7d4e;
+  --chart-5: #c4b59a;
+  --radius: 0.625rem;
+
+  --teal: #8B7355;
+  --amber: #a68b5e;
+  --cream: #EDE4D4;
+  --gold: #785D32;
+  --obsidian: #050A30;
+  --glass: rgba(10, 17, 66, 0.75);
+  --glass-border: rgba(26, 32, 96, 0.6);
+  --rough: #3E160C;
 }
 
 @theme inline {
+  --font-sans: var(--font-sora), 'Sora', sans-serif;
+  --font-serif: var(--font-dm-serif-display), 'DM Serif Display', serif;
+  --font-mono: var(--font-ibm-plex-mono), 'IBM Plex Mono', monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-teal: var(--teal);
+  --color-amber: var(--amber);
+  --color-cream: var(--cream);
+  --color-gold: var(--gold);
+  --color-obsidian: var(--obsidian);
+  --color-glass: var(--glass);
+  --color-glass-border: var(--glass-border);
+  --color-rough: var(--rough);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Glassmorphism utility */
+.glass-card {
+  background: var(--glass);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+}
+
+/* Scroll snapping */
+.snap-container {
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+  height: 100vh;
+}
+.snap-slide {
+  scroll-snap-align: start;
+  height: 100vh;
+  min-height: 100vh;
+}
+
+/* Animated network graph node pulse */
+@keyframes node-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.15); }
+}
+.animate-node-pulse {
+  animation: node-pulse 3s ease-in-out infinite;
+}
+
+/* Score gauge animation */
+@keyframes score-fill {
+  from { stroke-dashoffset: 283; }
+}
+.animate-score-fill {
+  animation: score-fill 1.5s ease-out forwards;
+}
+
+/* Fade-lift-in animation */
+@keyframes fade-lift-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-lift-in {
+  animation: fade-lift-in 0.6s ease-out forwards;
+}
+
+/* Glow border */
+.glow-border {
+  box-shadow: 0 0 20px rgba(120, 93, 50, 0.35), 0 0 40px rgba(120, 93, 50, 0.12);
+}
+
+/* Progress ticker steps */
+@keyframes ticker-dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1a2060;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #785D32;
 }

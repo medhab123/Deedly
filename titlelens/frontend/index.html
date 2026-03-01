@@ -111,27 +111,26 @@
           <p id="summary-text"></p>
         </details>
 
-        <!-- AI / ML Prediction layer -->
-        <section class="ai-predictions-card" aria-labelledby="ai-predictions-heading">
-          <h3 id="ai-predictions-heading">AI predictions</h3>
-          <p class="ai-predictions-desc">Multiple ML models (Linear Regression, Random Forest, Gradient Boosting) trained on this property’s data predict risk and explain what drives it.</p>
-          <div id="ai-predictions-loading" class="ai-predictions-loading hidden">Running models…</div>
-          <div id="ai-predictions-content" class="ai-predictions-content hidden">
-            <div class="ai-ensemble">
-              <span class="ai-ensemble-label">Ensemble risk score</span>
-              <span id="ai-ensemble-score" class="ai-ensemble-value">—</span>
-              <span id="ai-risk-tier" class="ai-tier-badge">—</span>
+        <!-- Property Behavior Network (graph risk) -->
+        <section class="graph-risk-card" aria-labelledby="graph-risk-heading">
+          <h3 id="graph-risk-heading">Network risk</h3>
+          <p class="graph-risk-desc">Does this property behave like other problematic ones? We build a graph from your address (owners, violations, comps) and detect unusual patterns.</p>
+          <div id="graph-risk-loading" class="graph-risk-loading hidden">Building graph…</div>
+          <div id="graph-risk-content" class="graph-risk-content hidden">
+            <div class="graph-risk-score-row">
+              <span class="graph-risk-label">Network risk score</span>
+              <span id="graph-risk-score" class="graph-risk-value">—</span>
             </div>
-            <div class="ai-models-row">
-              <span>Linear: <strong id="ai-model-lr">—</strong></span>
-              <span>Random Forest: <strong id="ai-model-rf">—</strong></span>
-              <span>Gradient Boosting: <strong id="ai-model-gb">—</strong></span>
-            </div>
-            <p class="ai-drivers-label">Top drivers (what moved the score)</p>
-            <ul id="ai-top-drivers" class="ai-drivers-list"></ul>
-            <p id="ai-idea" class="ai-idea"></p>
+            <p id="graph-risk-interpretation" class="graph-risk-interpretation"></p>
+            <ul id="graph-risk-stats" class="graph-risk-stats"></ul>
+            <details class="graph-risk-details">
+              <summary>How we calculated this (feature inputs)</summary>
+              <div id="graph-risk-feature-inputs" class="graph-risk-feature-inputs"></div>
+              <p id="graph-risk-score-explanation" class="graph-risk-score-explanation"></p>
+              <ul id="graph-risk-factors" class="graph-risk-factors"></ul>
+            </details>
           </div>
-          <button type="button" id="ai-predict-btn" class="btn-secondary">Run AI prediction</button>
+          <button type="button" id="graph-risk-btn" class="btn-secondary">Run network risk</button>
         </section>
 
         <!-- Tabs: Title Health, Persona, Copilot -->
