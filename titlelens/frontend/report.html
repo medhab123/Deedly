@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deedly — Buyer Confidence Report</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; color: #1c2433; }
+    h1 { font-family: 'Fraunces', serif; font-size: 1.5rem; }
+    .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 700; }
+    .badge-low { background: #e8f5e9; color: #2e7d32; }
+    .badge-med { background: #fff8e1; color: #f57c00; }
+    .badge-high { background: #ffebee; color: #c62828; }
+    .score { font-size: 2.5rem; font-weight: 700; }
+    .flags { margin: 1rem 0; }
+    .flags span { display: inline-block; margin: 0.25rem; padding: 0.25rem 0.5rem; background: #f5f5f5; border-radius: 4px; font-size: 0.9rem; }
+    .disclaimer { margin-top: 2rem; font-size: 0.8rem; color: #666; }
+  </style>
+</head>
+<body>
+  <div id="report-content">
+    <p>Loading report…</p>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+    const API = '';
+    if (!id) {
+      document.getElementById('report-content').innerHTML = '<p>No report ID. Use the main app to generate a report.</p>';
+    } else {
+      fetch(`${API}/api/analysis/${id}`).then(r => r.ok ? r.json() : Promise.reject()).then(data => {
+        const d = data.scores || {};
+        const th = data.titleHealth || {};
+        const addr = data.property?.address || 'Unknown';
+        const score = d.deedlyScore ?? 0;
+        const level = (th.level || 'MED').toUpperCase();
+        const flags = (data.flags || []).map(f => f.label).join(', ') || 'None';
+        const summary = data.summary || '';
+        const disclaimer = 'This report is for informational purposes only. Not a substitute for professional title or legal advice.';
+        document.getElementById('report-content').innerHTML = `
+          <h1>Deedly Buyer Confidence Report</h1>
+          <p><strong>Address:</strong> ${addr}</p>
+          <p><span class="score">${score}</span>/100 <span class="badge badge-${level === 'LOW' ? 'low' : level === 'HIGH' ? 'high' : 'med'}">TITLE HEALTH: ${level} RISK</span></p>
+          <div class="flags"><strong>Key flags:</strong> ${flags}</div>
+          <p>${summary}</p>
+          <p class="disclaimer">${disclaimer}</p>
+        `;
+      }).catch(() => {
+        document.getElementById('report-content').innerHTML = '<p>Could not load report.</p>';
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deedly — Buyer Confidence</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="logo">Deedly</h1>
+      <p class="tagline">Turns title insurance from paperwork into predictive confidence.</p>
+    </header>
+
+    <main class="main">
+      <section class="search-frame">
+        <form id="analyze-form" class="search-form">
+          <input type="text" id="address-input" placeholder="Enter property address…" autocomplete="off" />
+          <select id="persona-select">
+            <option value="Family">Family</option>
+            <option value="Investor">Investor</option>
+            <option value="First-time buyer">First-time buyer</option>
+            <option value="Remote worker">Remote worker</option>
+          </select>
+          <button type="submit" id="analyze-btn" class="btn-primary">Analyze Property</button>
+          <button type="button" id="demo-btn" class="btn-secondary">Use Demo</button>
+          <button type="button" id="reset-btn" class="btn-secondary">Reset</button>
+        </form>
+      </section>
+
+      <div id="empty-state" class="empty-state">
+        <p>Enter an address and click <strong>Analyze Property</strong> to explore your report.</p>
+      </div>
+
+      <div id="loading-state" class="loading-state hidden">
+        <div class="spinner"></div>
+        <p>Pulling property data…</p>
+      </div>
+
+      <div id="results" class="results hidden">
+        <!-- Hero: Score + map in a floating window -->
+        <div class="hero-frame">
+          <div class="score-hero">
+            <span class="score-label">Deedly Score</span>
+            <div class="score-display">
+              <span id="score-num">0</span>
+              <span class="score-max">/100</span>
+            </div>
+            <div id="title-health-badge" class="badge">—</div>
+            <p class="score-hint">Tap any card below to learn what it means</p>
+          </div>
+          <div id="map-property" class="map-view"></div>
+        </div>
+
+        <!-- Interactive score cards (click to expand) -->
+        <section class="score-cards" aria-label="Property scores">
+          <button type="button" class="score-card" data-card="safety" aria-expanded="false">
+            <span class="card-icon" aria-hidden="true">🛡</span>
+            <span class="card-label">Safety</span>
+            <span id="card-val-safety" class="card-value">—</span>
+            <span class="card-hint">Tap to explain</span>
+            <div class="card-explain" hidden>
+              <p>Higher = safer. Based on crime incidents in the area over the last 12 months. Lower scores mean more incidents near the property.</p>
+            </div>
+          </button>
+          <button type="button" class="score-card" data-card="title" aria-expanded="false">
+            <span class="card-icon" aria-hidden="true">📋</span>
+            <span class="card-label">Title Health</span>
+            <span id="card-val-title" class="card-value">—</span>
+            <span class="card-hint">Tap to explain</span>
+            <div class="card-explain" hidden>
+              <p>Based on ownership turnover, liens, easements, and zoning. Higher = healthier title. Low scores suggest more due diligence.</p>
+            </div>
+          </button>
+          <button type="button" class="score-card" data-card="env" aria-expanded="false">
+            <span class="card-icon" aria-hidden="true">🌊</span>
+            <span class="card-label">Environmental</span>
+            <span id="card-val-env" class="card-value">—</span>
+            <span class="card-hint">Tap to explain</span>
+            <div class="card-explain" hidden>
+              <p>FEMA flood and climate risk. Higher = lower environmental risk. Low scores mean flood or climate concerns.</p>
+            </div>
+          </button>
+          <button type="button" class="score-card" data-card="nbhd" aria-expanded="false">
+            <span class="card-icon" aria-hidden="true">🏘</span>
+            <span class="card-label">Neighborhood</span>
+            <span id="card-val-nbhd" class="card-value">—</span>
+            <span class="card-hint">Tap to explain</span>
+            <div class="card-explain" hidden>
+              <p>Stability from income, demographics, and turnover. Higher = more stable. Factors in Census data and transfer history.</p>
+            </div>
+          </button>
+        </section>
+
+        <!-- Key flags: clickable badges with popovers -->
+        <section class="flags-section">
+          <h3>Key flags</h3>
+          <p class="flags-hint">Tap a flag to see what it means</p>
+          <div id="flags-list" class="flags-list"></div>
+          <div id="flag-popover" class="popover hidden" role="tooltip"></div>
+        </section>
+
+        <!-- What this means: expandable summary -->
+        <details class="summary-card">
+          <summary>What this means</summary>
+          <p id="summary-text"></p>
+        </details>
+
+        <!-- AI / ML Prediction layer -->
+        <section class="ai-predictions-card" aria-labelledby="ai-predictions-heading">
+          <h3 id="ai-predictions-heading">AI predictions</h3>
+          <p class="ai-predictions-desc">Multiple ML models (Linear Regression, Random Forest, Gradient Boosting) trained on this property’s data predict risk and explain what drives it.</p>
+          <div id="ai-predictions-loading" class="ai-predictions-loading hidden">Running models…</div>
+          <div id="ai-predictions-content" class="ai-predictions-content hidden">
+            <div class="ai-ensemble">
+              <span class="ai-ensemble-label">Ensemble risk score</span>
+              <span id="ai-ensemble-score" class="ai-ensemble-value">—</span>
+              <span id="ai-risk-tier" class="ai-tier-badge">—</span>
+            </div>
+            <div class="ai-models-row">
+              <span>Linear: <strong id="ai-model-lr">—</strong></span>
+              <span>Random Forest: <strong id="ai-model-rf">—</strong></span>
+              <span>Gradient Boosting: <strong id="ai-model-gb">—</strong></span>
+            </div>
+            <p class="ai-drivers-label">Top drivers (what moved the score)</p>
+            <ul id="ai-top-drivers" class="ai-drivers-list"></ul>
+            <p id="ai-idea" class="ai-idea"></p>
+          </div>
+          <button type="button" id="ai-predict-btn" class="btn-secondary">Run AI prediction</button>
+        </section>
+
+        <!-- Tabs: Title Health, Persona, Copilot -->
+        <div class="tabs-row">
+          <button type="button" class="tab active" data-tab="title">Title Health</button>
+          <button type="button" class="tab" data-tab="persona">Persona</button>
+          <button type="button" class="tab" data-tab="copilot">Copilot</button>
+        </div>
+
+        <div id="tab-title" class="tab-panel active">
+          <div class="detail-cards">
+            <div class="detail-card"><strong>Ownership turnover</strong><span id="turnover">—</span></div>
+            <div class="detail-card"><strong>Liens</strong><span id="liens">—</span></div>
+            <div class="detail-card"><strong>Easements</strong><span id="easements">—</span></div>
+            <div class="detail-card"><strong>Zoning</strong><span id="zoning">—</span></div>
+            <div class="detail-card"><strong>Claim likelihood</strong><span id="claim-likelihood">—</span></div>
+          </div>
+          <button type="button" id="simulate-btn" class="btn-secondary">Simulate Scenario</button>
+        </div>
+
+        <div id="tab-persona" class="tab-panel">
+          <h4>For <span id="persona-name"></span></h4>
+          <div class="pros-cards">
+            <div class="pros-card">
+              <strong>Pros</strong>
+              <ul id="pros-list"></ul>
+            </div>
+            <div class="pros-card">
+              <strong>Watch-outs</strong>
+              <ul id="watchouts-list"></ul>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-copilot" class="tab-panel">
+          <div id="chat-messages" class="chat-messages"></div>
+          <form id="ask-form" class="ask-form">
+            <input type="text" id="ask-input" placeholder="Ask: Is this a safe investment?" autocomplete="off" />
+            <button type="submit" class="btn-primary">Ask Copilot</button>
+          </form>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions-row">
+          <button type="button" id="report-btn" class="btn-primary">Open Report</button>
+          <button type="button" id="copy-link-btn" class="btn-secondary">Copy Link</button>
+          <button type="button" id="download-json-btn" class="btn-secondary">Download JSON</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Simulate modal -->
+    <div id="simulate-modal" class="modal hidden">
+      <div class="modal-inner">
+        <h3>Simulate Scenario</h3>
+        <select id="scenario-select">
+          <option value="add_lien">Add old lien</option>
+          <option value="boundary">Boundary dispute</option>
+          <option value="transfer_spike">Recent transfer spike</option>
+        </select>
+        <div class="modal-btns">
+          <button type="button" id="run-simulate" class="btn-primary">Run</button>
+          <button type="button" id="close-modal" class="btn-secondary">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+{
+  "demo1": {
+    "address": "80 John St, New York, NY 10038",
+    "geocoded": { "lat": 40.7074, "lng": -74.0055, "tract": "1", "full_geoid": "36061000100" },
+    "risk_score": { "score": 52, "level": "HIGH", "justification": ["+22: High legal risks", "+6: CO not retrieved", "+15: Safety score low", "+5: No comparable sales"] },
+    "confidence_dashboard": {
+      "ownership_confidence": { "level": "REVIEW RECOMMENDED" },
+      "hidden_legal_risks": { "level": "HIGH", "detail": "Potential property classification mismatch; CO not retrieved" },
+      "flood_risk": { "level": "LOW", "score": 20.4, "rating": "LOW", "detail": "LOW (20.4/100)" },
+      "crime_data": { "safety_score": 40, "incident_count": 180, "status": "VERIFIED" },
+      "valuation_confidence": { "level": "LOW", "detail": "No comparable sales", "comps_used": 0 },
+      "insurance_risk": { "level": "LOW", "detail": "LOW (flood score 20.4)" }
+    },
+    "safety_score": 40,
+    "value_trend": "No comparable sales — verify value manually",
+    "insurance_risk": "LOW (flood score 20.4)",
+    "transfer_count": 3,
+    "transfers": [
+      { "recording_date": "2020-05-15", "sale_price": 1250000 },
+      { "recording_date": "2015-03-22", "sale_price": 980000 }
+    ],
+    "crime": { "incident_count": 180, "primary_types": { "THEFT": 45, "ASSAULT": 30 } },
+    "climate": { "available": true, "flood_score": 20.4, "flood_rating": "LOW", "overall_rating": "LOW" },
+    "walkability": { "walk_score": 98, "transit_score": 100, "bike_score": 85 },
+    "schools": [
+      { "name": "PS 234", "distance_miles": 0.3, "grades": { "low": "KG", "high": "5" }, "location": { "lat": 40.708, "lng": -74.006 } },
+      { "name": "IS 289", "distance_miles": 0.5, "grades": { "low": "6", "high": "8" }, "location": { "lat": 40.71, "lng": -74.008 } }
+    ],
+    "demographics": { "median_income": 160466, "population": 8623, "median_home_value": 1282600 },
+    "neighborhood_demographics": { "income": { "median_household_income_usd": 160466 }, "race_ethnicity": { "total_population": 8623 } },
+    "ai_summary": "This property presents a HIGH overall risk with a score of 52/100. Key factors: high legal risks, CO not retrieved, safety score 40/100, no comparable sales. Review recommended before closing."
+  },
+  "demo2": {
+    "address": "123 N State St, Chicago, IL 60601",
+    "geocoded": { "lat": 41.8855, "lng": -87.6274, "tract": "3201", "full_geoid": "17031320100" },
+    "risk_score": { "score": 28, "level": "MODERATE", "justification": ["+8: Safety score moderate", "+5: No comparable sales"] },
+    "confidence_dashboard": {
+      "ownership_confidence": { "level": "SEE TRANSFER HISTORY" },
+      "hidden_legal_risks": { "level": "NONE", "detail": "No hidden legal risks" },
+      "flood_risk": { "level": "LOW", "score": 15, "rating": "LOW" },
+      "crime_data": { "safety_score": 65, "incident_count": 420 },
+      "valuation_confidence": { "level": "LOW", "comps_used": 0 },
+      "insurance_risk": { "level": "LOW" }
+    },
+    "safety_score": 65,
+    "value_trend": "Est. $450,000 (5 comps)",
+    "insurance_risk": "LOW",
+    "transfer_count": 2,
+    "transfers": [ { "recording_date": "2019-08-10", "sale_price": 420000 } ],
+    "crime": { "incident_count": 420, "primary_types": { "THEFT": 120 } },
+    "climate": { "available": true, "flood_score": 15 },
+    "walkability": { "walk_score": 95, "transit_score": 100, "bike_score": 88 },
+    "schools": [
+      { "name": "Lincoln Elementary", "distance_miles": 0.4, "location": { "lat": 41.887, "lng": -87.628 } }
+    ],
+    "ai_summary": "Moderate risk (28/100). Strong walkability. Review transfer history and crime data."
+  }
+}

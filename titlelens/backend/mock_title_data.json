@@ -1,0 +1,47 @@
+{
+  "Chicago": {
+    "ownership_confidence": "HIGH",
+    "ownership_history": "3 transfers in last 20 years, no gaps",
+    "hidden_legal_risks": "LOW",
+    "liens": "None recorded",
+    "easements": "Utility easement only",
+    "zoning": "Residential",
+    "claims_history": "No title claims in area"
+  },
+  "New York": {
+    "ownership_confidence": "HIGH",
+    "ownership_history": "Clean chain of title",
+    "hidden_legal_risks": "LOW",
+    "liens": "None",
+    "easements": "Standard utility",
+    "zoning": "Residential",
+    "claims_history": "Low claim area"
+  },
+  "Austin": {
+    "ownership_confidence": "MEDIUM",
+    "ownership_history": "2 transfers, minor gap 2010",
+    "hidden_legal_risks": "LOW",
+    "liens": "Paid off 2022",
+    "easements": "Utility + drainage",
+    "zoning": "Single family",
+    "claims_history": "Average for region"
+  },
+  "Los Angeles": {
+    "ownership_confidence": "HIGH",
+    "ownership_history": "4 transfers, all documented",
+    "hidden_legal_risks": "LOW",
+    "liens": "None",
+    "easements": "Utility",
+    "zoning": "R1",
+    "claims_history": "Low"
+  },
+  "default": {
+    "ownership_confidence": "MEDIUM",
+    "ownership_history": "Typical chain of title",
+    "hidden_legal_risks": "LOW",
+    "liens": "None recorded",
+    "easements": "Standard",
+    "zoning": "Residential",
+    "claims_history": "Check county records"
+  }
+}
